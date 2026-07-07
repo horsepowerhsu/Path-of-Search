@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Path of Search</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="popup-header">
+      <div class="brand">
+        <img id="wiki-logo" src="icons/poe_logo.png" class="app-icon" alt="PoE search logo">
+        <div id="wiki-title" class="wiki-title">PoE Wiki</div>
+      </div>
+      <label class="wiki-switch" title="Switch between PoE and PoE2">
+        <span id="poe-label" class="switch-label active">PoE</span>
+        <input type="checkbox" id="wiki-toggle" aria-label="Switch PoE / PoE2">
+        <span class="slider"></span>
+        <span id="poe2-label" class="switch-label">PoE 2</span>
+      </label>
+    </div>
+
+    <div class="source-row" aria-label="Search source">
+      <button id="source-wiki" class="source-btn active" type="button">Wiki</button>
+      <button id="source-db" class="source-btn" type="button">PoEDB</button>
+    </div>
+
+    <form id="searchForm">
+      <div class="search-wrap">
+        <input id="q" type="text" placeholder="Search PoE Wiki..." autocomplete="off" autofocus>
+        <div id="suggestion-box" class="suggestion-box" role="listbox" aria-label="Search suggestions"></div>
+      </div>
+    </form>
+  </div>
+  <script src="js/config.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/search-engine.js"></script>
+  <script src="js/wiki.js"></script>
+  <script src="js/poedb.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Path of Search",
+  "version": "1.1.0",
+  "description": "Path of Exile Wiki, PoEDB and PoE2DB 快速搜尋擴充功能。",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Path of Search",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+W"
+      }
+    }
+  },
+  "host_permissions": [
+    "https://cdn.poe2db.tw/*",
+    "https://cdn.poedb.tw/*",
+    "https://poe2db.tw/*",
+    "https://poedb.tw/*",
+    "https://www.poe2wiki.net/*",
+    "https://www.poewiki.net/*"
+  ],
+  "permissions": [
+    "storage",
+    "unlimitedStorage"
+  ]
+}
