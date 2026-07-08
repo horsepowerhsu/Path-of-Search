@@ -12,8 +12,8 @@ const CONFIG = {
       tw: 'https://cdn.poedb.tw/json/autocomplete_tw.d18eafeb972db1fa.json'
     },
     poe2: {
-      us: 'https://cdn.poe2db.tw/json/autocompletecb_us.2b57e5fee5234cd3.json',
-      tw: 'https://cdn.poe2db.tw/json/autocompletecb_tw.28c9e1e8f5a5bc31.json'
+      us: 'https://cdn.poe2db.tw/json/autocompletecb_us.1fda452f2a03cc41.json',
+      tw: 'https://cdn.poe2db.tw/json/autocompletecb_tw.8b0b768c77a5fbc7.json'
     }
   }
 };

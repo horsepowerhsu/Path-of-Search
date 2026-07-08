@@ -1,0 +1,52 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "Origin",
+          "operation": "set",
+          "value": "https://poedb.tw"
+        },
+        {
+          "header": "Referer",
+          "operation": "set",
+          "value": "https://poedb.tw/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||cdn.poedb.tw/json/",
+      "resourceTypes": [
+        "xmlhttprequest"
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": {
+      "type": "modifyHeaders",
+      "requestHeaders": [
+        {
+          "header": "Origin",
+          "operation": "set",
+          "value": "https://poe2db.tw"
+        },
+        {
+          "header": "Referer",
+          "operation": "set",
+          "value": "https://poe2db.tw/"
+        }
+      ]
+    },
+    "condition": {
+      "urlFilter": "||cdn.poe2db.tw/json/",
+      "resourceTypes": [
+        "xmlhttprequest"
+      ]
+    }
+  }
+]

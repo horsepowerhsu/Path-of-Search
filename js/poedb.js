@@ -75,11 +75,11 @@ function getAutocompleteId(lang, game = state.game) {
 }
 
 function getDbManifestCacheKey(game = state.game) {
-  return `pos:db:manifest:${game}:v3`;
+  return `pos:db:manifest:${game}:v4`;
 }
 
 function getDbDataCacheKey(lang, game = state.game) {
-  return `pos:db:data:${game}:${lang}:v3`;
+  return `pos:db:data:${game}:${lang}:v4`;
 }
 
 function extractHeaderScriptUrl(html, pageUrl) {
