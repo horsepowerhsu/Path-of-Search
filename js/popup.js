@@ -7,12 +7,12 @@ function buildUrl(term) {
   return `${getWikiBaseUrl()}/index.php?search=${q}&title=Special%3ASearch&go=Go`;
 }
 
-function search(target) {
+function search(target, forcedLang = null) {
   if (!target) return;
 
   if (typeof target === 'object') {
     if (state.source === 'db') {
-      chrome.tabs.create({ url: normalizeDbValue(target.value, target.label) });
+      chrome.tabs.create({ url: normalizeDbValue(target.value, target.label, forcedLang) });
       window.close();
       return;
     }
@@ -23,7 +23,7 @@ function search(target) {
 
   const raw = String(target).trim();
   if (!raw) return;
-  chrome.tabs.create({ url: buildUrl(raw) });
+  chrome.tabs.create({ url: state.source === 'db' ? buildDbUrl(raw, forcedLang) : buildUrl(raw) });
   window.close();
 }
 

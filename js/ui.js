@@ -112,6 +112,9 @@ function renderSuggestions(items) {
   }
 
   for (const item of suggestions) {
+    const row = document.createElement('div');
+    row.className = 'suggestion-row';
+
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'suggestion-item';
@@ -132,7 +135,41 @@ function renderSuggestions(items) {
       event.preventDefault();
       search(item);
     });
-    suggestionBox.appendChild(btn);
+    row.appendChild(btn);
+
+    if (state.source === 'db') {
+      const languageActions = document.createElement('div');
+      languageActions.className = 'suggestion-language-actions';
+
+      const twButton = document.createElement('button');
+      twButton.type = 'button';
+      twButton.className = 'suggestion-language-btn';
+      twButton.textContent = '中';
+      twButton.title = '以繁體中文開啟';
+      twButton.setAttribute('aria-label', 'Open in Traditional Chinese');
+      twButton.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        search(item, 'tw');
+      });
+
+      const usButton = document.createElement('button');
+      usButton.type = 'button';
+      usButton.className = 'suggestion-language-btn';
+      usButton.textContent = 'EN';
+      usButton.title = 'Open in English';
+      usButton.setAttribute('aria-label', 'Open in English');
+      usButton.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        search(item, 'us');
+      });
+
+      languageActions.append(twButton, usButton);
+      row.appendChild(languageActions);
+    }
+
+    suggestionBox.appendChild(row);
   }
   suggestionBox.classList.add('show');
 }

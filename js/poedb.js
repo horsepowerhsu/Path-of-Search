@@ -25,11 +25,12 @@ function toDbEnglishSlug(text) {
     .join('_');
 }
 
-function buildDbUrl(term) {
+function buildDbUrl(term, forcedLang = null) {
   const raw = term.trim();
   const host = getDbHost();
+  const lang = forcedLang || getDbLang(raw);
 
-  if (hasChinese(raw)) {
+  if (lang === 'tw') {
     const q = encodeURIComponent(raw).replace(/%20/g, '+');
     return `${host}/tw/search?q=${q}`;
   }
@@ -38,18 +39,18 @@ function buildDbUrl(term) {
   return `${host}/us/${slug}`;
 }
 
-function normalizeDbValue(value, fallbackTerm) {
+function normalizeDbValue(value, fallbackTerm, forcedLang = null) {
   const host = getDbHost();
-  if (!value) return buildDbUrl(fallbackTerm);
+  if (!value) return buildDbUrl(fallbackTerm, forcedLang);
 
-  const lang = getDbLang(fallbackTerm || '');
+  const lang = forcedLang || getDbLang(fallbackTerm || '');
   const langCodes = ['us', 'cn', 'ru', 'pt', 'th', 'fr', 'de', 'sp', 'kr', 'tw', 'jp'];
 
   let url;
   try {
     url = new URL(value, host);
   } catch (_) {
-    return buildDbUrl(fallbackTerm);
+    return buildDbUrl(fallbackTerm, forcedLang);
   }
 
   if (url.hostname !== new URL(host).hostname) {

@@ -263,3 +263,45 @@ input[type="text"]:focus {
 }
 .suggestion-item:hover .suggestion-desc,
 .suggestion-item.active .suggestion-desc { color: var(--gold2); }
+
+
+/* PoEDB language shortcuts */
+.suggestion-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(198,164,91,.12);
+}
+.suggestion-row:last-child { border-bottom: 0; }
+.suggestion-row .suggestion-item {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  border-bottom: 0;
+}
+.suggestion-language-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 7px 4px 2px;
+  flex: 0 0 auto;
+}
+.suggestion-language-btn {
+  min-width: 28px;
+  height: 25px;
+  padding: 0 6px;
+  border: 1px solid rgba(198,164,91,.42);
+  border-radius: 6px;
+  background: rgba(0,0,0,.18);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.suggestion-language-btn:hover,
+.suggestion-language-btn:focus-visible {
+  color: var(--gold2);
+  border-color: var(--gold2);
+  background: var(--hover);
+  outline: none;
+}
