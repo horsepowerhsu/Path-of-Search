@@ -108,7 +108,7 @@ async function fetchWikiFromApi(query, game, signal) {
   // Important: Wiki API suggestions are already relevant even when our local fuzzy
   // score cannot match the user's original unordered query. Keep the old behavior
   // instead of showing an empty suggestion list.
-  return ranked.length ? ranked : items.slice(0, CONFIG.WIKI_LIMIT);
+  return ranked;
 }
 
 async function fetchWikiSuggestions(query, game = state.game) {
