@@ -1,7 +1,9 @@
 const dbDataCache = new Map();
+const dbDataUrlCache = new Map();
 const dbManifestCache = new Map();
 const dbDataLoaders = new Map();
 const dbManifestLoaders = new Map();
+const dbManifestRefreshLoaders = new Map();
 const dbWarmupGames = new Set();
 
 function getDbHostForGame(game) {
@@ -102,13 +104,13 @@ function extractAutocompleteMap(headerJs) {
 
 async function downloadDbAutocompleteManifest(game) {
   const pageUrl = getDbSiteHomeForGame(game, 'tw');
-  const pageRes = await posFetchWithRetry(pageUrl, {}, 2, 350);
+  const pageRes = await posFetchWithRetry(pageUrl, { cache: 'no-store' }, 2, 350);
 
   const html = await pageRes.text();
   const headerUrl = extractHeaderScriptUrl(html, pageUrl);
   if (!headerUrl) throw new Error('PoEDB header script not found');
 
-  const headerRes = await posFetchWithRetry(headerUrl, {}, 2, 350);
+  const headerRes = await posFetchWithRetry(headerUrl, { cache: 'no-store' }, 2, 350);
   const headerJs = await headerRes.text();
   const map = extractAutocompleteMap(headerJs);
   if (!Object.keys(map).length) throw new Error('PoEDB autocomplete map not found');
@@ -144,18 +146,33 @@ async function fetchDbAutocompleteManifest(game = state.game) {
 }
 
 async function refreshDbAutocompleteManifest(game = state.game) {
+  if (dbManifestRefreshLoaders.has(game)) {
+    return dbManifestRefreshLoaders.get(game);
+  }
+
   const storageKey = getDbManifestCacheKey(game);
-  const map = await downloadDbAutocompleteManifest(game);
-  dbManifestCache.set(game, map);
-  await posStorageSet(storageKey, { updatedAt: Date.now(), map });
-  return map;
+  const loader = downloadDbAutocompleteManifest(game)
+    .then(async map => {
+      dbManifestCache.set(game, map);
+      await posStorageSet(storageKey, { updatedAt: Date.now(), map });
+      return map;
+    })
+    .finally(() => dbManifestRefreshLoaders.delete(game));
+
+  dbManifestRefreshLoaders.set(game, loader);
+  return loader;
+}
+
+function getDbAutocompleteUrlFromManifest(manifest, lang, game = state.game) {
+  const jsonFile = manifest?.[getAutocompleteId(lang, game)];
+  return jsonFile ? `${getDbCdnHostForGame(game)}/json/${jsonFile}` : '';
 }
 
 async function getDbAutocompleteUrl(lang, game = state.game) {
   try {
     const manifest = await fetchDbAutocompleteManifest(game);
-    const jsonFile = manifest[getAutocompleteId(lang, game)];
-    if (jsonFile) return `${getDbCdnHostForGame(game)}/json/${jsonFile}`;
+    const url = getDbAutocompleteUrlFromManifest(manifest, lang, game);
+    if (url) return url;
   } catch (_) {
     // Static fallback keeps suggestions usable when the PoEDB header script is unavailable.
   }
@@ -163,11 +180,11 @@ async function getDbAutocompleteUrl(lang, game = state.game) {
   return CONFIG.DB_FALLBACK_FILES[game]?.[lang] || '';
 }
 
-async function downloadDbAutocompleteData(lang, game = state.game) {
-  const url = await getDbAutocompleteUrl(lang, game);
+async function downloadDbAutocompleteData(lang, game = state.game, forcedUrl = '') {
+  const url = forcedUrl || await getDbAutocompleteUrl(lang, game);
   if (!url) throw new Error('PoEDB autocomplete URL unavailable');
 
-  const res = await posFetchWithRetry(url, {}, 2, 350);
+  const res = await posFetchWithRetry(url, { cache: 'no-store' }, 2, 350);
   const data = await res.json();
   const items = Array.isArray(data) ? data : [];
 
@@ -178,14 +195,15 @@ async function downloadDbAutocompleteData(lang, game = state.game) {
   return { url, items };
 }
 
-async function refreshDbAutocompleteData(lang, game = state.game) {
+async function refreshDbAutocompleteData(lang, game = state.game, forcedUrl = '') {
   const loaderKey = `${game}:${lang}`;
   if (dbDataLoaders.has(loaderKey)) return dbDataLoaders.get(loaderKey);
 
   const storageKey = getDbDataCacheKey(lang, game);
-  const loader = downloadDbAutocompleteData(lang, game)
+  const loader = downloadDbAutocompleteData(lang, game, forcedUrl)
     .then(async ({ url, items }) => {
       dbDataCache.set(loaderKey, items);
+      dbDataUrlCache.set(loaderKey, url);
       await posStorageSet(storageKey, {
         updatedAt: Date.now(),
         url,
@@ -201,18 +219,39 @@ async function refreshDbAutocompleteData(lang, game = state.game) {
 
 async function getDbAutocompleteData(lang, game = state.game) {
   const key = `${game}:${lang}`;
-  if (dbDataCache.has(key)) return dbDataCache.get(key);
-
   const storageKey = getDbDataCacheKey(lang, game);
-  const cached = await posStorageGet(storageKey);
+  let cached = null;
+
+  if (dbDataCache.has(key)) {
+    cached = {
+      url: dbDataUrlCache.get(key) || '',
+      items: dbDataCache.get(key)
+    };
+  } else {
+    cached = await posStorageGet(storageKey);
+    if (cached && Array.isArray(cached.items) && cached.items.length) {
+      dbDataCache.set(key, cached.items);
+      dbDataUrlCache.set(key, cached.url || '');
+    }
+  }
+
+  try {
+    // Always check the live header first. The hashed JSON filename changes when
+    // PoEDB / PoE2DB updates its autocomplete data.
+    const manifest = await refreshDbAutocompleteManifest(game);
+    const latestUrl = getDbAutocompleteUrlFromManifest(manifest, lang, game);
+
+    if (latestUrl) {
+      if (cached && cached.url === latestUrl && Array.isArray(cached.items) && cached.items.length) {
+        return cached.items;
+      }
+      return refreshDbAutocompleteData(lang, game, latestUrl);
+    }
+  } catch (_) {
+    // If the update check is temporarily unavailable, keep the last good cache.
+  }
 
   if (cached && Array.isArray(cached.items) && cached.items.length) {
-    dbDataCache.set(key, cached.items);
-
-    if (!posCacheIsFresh(cached, POS_CACHE_TTL.DB_DATA)) {
-      refreshDbAutocompleteData(lang, game).catch(() => {});
-    }
-
     return cached.items;
   }
 
