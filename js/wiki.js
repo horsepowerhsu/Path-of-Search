@@ -6,7 +6,7 @@ function getWikiBaseUrlForGame(game) {
 }
 
 function getWikiCacheKey(query, game = state.game) {
-  return `pos:wiki:${game}:${query.trim().toLowerCase()}:v4`;
+  return `pos:wiki:${game}:${query.trim().toLowerCase()}:v7`;
 }
 
 function uniqueWikiItems(items) {
@@ -19,96 +19,102 @@ function uniqueWikiItems(items) {
   });
 }
 
-function mapWikiOpenSearch(data) {
-  return Array.isArray(data?.[1])
-    ? data[1].map(label => ({ label, value: label }))
-    : [];
+function chromeCall(fn) {
+  return new Promise((resolve, reject) => {
+    fn(result => {
+      const err = chrome.runtime?.lastError;
+      if (err) reject(new Error(err.message));
+      else resolve(result);
+    });
+  });
 }
 
-function mapWikiPrefixSearch(data) {
-  return Array.isArray(data?.query?.prefixsearch)
-    ? data.query.prefixsearch.map(item => ({ label: item.title, value: item.title }))
-    : [];
-}
-
-function mapWikiSearch(data) {
-  return Array.isArray(data?.query?.search)
-    ? data.query.search.map(item => ({ label: item.title, value: item.title }))
-    : [];
-}
-
-async function fetchWikiOpenSearch(query, game, signal) {
+async function findWikiTab(game) {
   const baseUrl = getWikiBaseUrlForGame(game);
-  const params = new URLSearchParams({
-    action: 'opensearch',
-    search: query,
-    limit: String(CONFIG.WIKI_LIMIT),
-    namespace: '0',
-    format: 'json',
-    origin: '*'
+  const tabs = await chromeCall(cb => chrome.tabs.query({ url: `${baseUrl}/*` }, cb));
+  if (!Array.isArray(tabs) || !tabs.length) return null;
+
+  const active = tabs.find(tab => tab.active);
+  return active || tabs[0];
+}
+
+async function injectWikiBridge(tabId) {
+  if (!chrome.scripting?.executeScript) return false;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['js/wiki-bridge.js']
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function sendWikiBridgeMessage(tabId, payload) {
+  try {
+    return await chromeCall(cb => chrome.tabs.sendMessage(tabId, payload, cb));
+  } catch (_) {
+    const injected = await injectWikiBridge(tabId);
+    if (!injected) return null;
+    try {
+      return await chromeCall(cb => chrome.tabs.sendMessage(tabId, payload, cb));
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+async function fetchWikiVariantThroughTab(query, game) {
+  const tab = await findWikiTab(game);
+  if (!tab?.id) {
+    const err = new Error('WIKI_TAB_REQUIRED');
+    err.code = 'WIKI_TAB_REQUIRED';
+    throw err;
+  }
+
+  const response = await sendWikiBridgeMessage(tab.id, {
+    type: 'POS_WIKI_SUGGEST',
+    game,
+    query,
+    limit: CONFIG.WIKI_LIMIT
   });
 
-  const res = await posFetchWithRetry(`${baseUrl}/api.php?${params.toString()}`, { signal }, 2, 350);
-  return mapWikiOpenSearch(await res.json());
+  if (!response?.ok) {
+    const err = new Error(response?.error || 'WIKI_BRIDGE_FAILED');
+    err.code = response?.error || 'WIKI_BRIDGE_FAILED';
+    throw err;
+  }
+
+  return Array.isArray(response.items) ? response.items : [];
 }
 
-async function fetchWikiPrefixSearch(query, game, signal) {
-  const baseUrl = getWikiBaseUrlForGame(game);
-  const params = new URLSearchParams({
-    action: 'query',
-    list: 'prefixsearch',
-    pssearch: query,
-    pslimit: String(CONFIG.WIKI_LIMIT),
-    format: 'json',
-    origin: '*'
-  });
-
-  const res = await posFetchWithRetry(`${baseUrl}/api.php?${params.toString()}`, { signal }, 2, 350);
-  return mapWikiPrefixSearch(await res.json());
-}
-
-async function fetchWikiFullTextSearch(query, game, signal) {
-  const baseUrl = getWikiBaseUrlForGame(game);
-  const params = new URLSearchParams({
-    action: 'query',
-    list: 'search',
-    srsearch: query,
-    srlimit: String(CONFIG.WIKI_LIMIT),
-    srnamespace: '0',
-    format: 'json',
-    origin: '*'
-  });
-
-  const res = await posFetchWithRetry(`${baseUrl}/api.php?${params.toString()}`, { signal }, 2, 350);
-  return mapWikiSearch(await res.json());
-}
-
-async function fetchWikiVariantFromApi(query, game, signal) {
-  const openSearchItems = await fetchWikiOpenSearch(query, game, signal);
-  if (openSearchItems.length) return openSearchItems;
-
-  const prefixItems = await fetchWikiPrefixSearch(query, game, signal);
-  if (prefixItems.length) return prefixItems;
-
-  return fetchWikiFullTextSearch(query, game, signal);
-}
-
-async function fetchWikiFromApi(query, game, signal) {
+async function fetchWikiThroughTab(query, game, signal) {
   const variants = POS_SEARCH.getQueryVariants(query, 6);
-  const results = await Promise.allSettled(
-    variants.map(variant => fetchWikiVariantFromApi(variant, game, signal))
-  );
+  const results = [];
 
-  const items = uniqueWikiItems(results
-    .filter(result => result.status === 'fulfilled')
-    .flatMap(result => result.value));
+  for (const variant of variants) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    try {
+      const items = await fetchWikiVariantThroughTab(variant, game);
+      results.push(...items);
+      if (results.length >= CONFIG.WIKI_LIMIT * 2) break;
+    } catch (err) {
+      if (err?.code === 'WIKI_TAB_REQUIRED') throw err;
+    }
+  }
 
+  const items = uniqueWikiItems(results);
   const ranked = POS_SEARCH.rank(items, query, CONFIG.WIKI_LIMIT);
+  return ranked.length ? ranked : items.slice(0, CONFIG.WIKI_LIMIT);
+}
 
-  // Important: Wiki API suggestions are already relevant even when our local fuzzy
-  // score cannot match the user's original unordered query. Keep the old behavior
-  // instead of showing an empty suggestion list.
-  return ranked;
+function wikiTabRequiredSuggestion(query, game) {
+  return [{
+    label: game === 'poe2' ? '⚠ 先開啟 PoE2 Wiki 分頁' : '⚠ 先開啟 PoE Wiki 分頁',
+    value: query,
+    url: `${getWikiBaseUrlForGame(game)}/`
+  }];
 }
 
 async function fetchWikiSuggestions(query, game = state.game) {
@@ -121,11 +127,9 @@ async function fetchWikiSuggestions(query, game = state.game) {
   const cached = await posStorageGet(key);
   if (cached && Array.isArray(cached.items) && cached.items.length) {
     wikiCache.set(key, cached.items);
-
     if (!posCacheIsFresh(cached, POS_CACHE_TTL.WIKI_RESULT)) {
       refreshWikiSuggestions(normalizedQuery, game).catch(() => {});
     }
-
     return cached.items;
   }
 
@@ -134,19 +138,19 @@ async function fetchWikiSuggestions(query, game = state.game) {
 
 async function refreshWikiSuggestions(query, game = state.game) {
   const key = getWikiCacheKey(query, game);
-
   if (wikiAbortController) wikiAbortController.abort();
   wikiAbortController = new AbortController();
 
-  const items = await fetchWikiFromApi(query, game, wikiAbortController.signal);
-
-  if (items.length) {
-    wikiCache.set(key, items);
-    await posStorageSet(key, {
-      updatedAt: Date.now(),
-      items
-    });
+  try {
+    const items = await fetchWikiThroughTab(query, game, wikiAbortController.signal);
+    if (items.length) {
+      wikiCache.set(key, items);
+      await posStorageSet(key, { updatedAt: Date.now(), items });
+    }
+    return items;
+  } catch (err) {
+    if (err?.name === 'AbortError') throw err;
+    if (err?.code === 'WIKI_TAB_REQUIRED') return wikiTabRequiredSuggestion(query, game);
+    throw err;
   }
-
-  return items;
 }

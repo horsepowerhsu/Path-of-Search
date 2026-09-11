@@ -9,8 +9,12 @@ function buildUrl(term) {
 
 function search(target, forcedLang = null) {
   if (!target) return;
-
   if (typeof target === 'object') {
+    if (target.url) {
+      chrome.tabs.create({ url: target.url });
+      window.close();
+      return;
+    }
     if (state.source === 'db') {
       chrome.tabs.create({ url: normalizeDbValue(target.value, target.label, forcedLang) });
       window.close();
@@ -26,7 +30,6 @@ function search(target, forcedLang = null) {
   chrome.tabs.create({ url: state.source === 'db' ? buildDbUrl(raw, forcedLang) : buildUrl(raw) });
   window.close();
 }
-
 function isSameSuggestionRequest(requestId, query, source, game) {
   return requestId === suggestionRequestId &&
     input.value.trim() === query &&
@@ -43,7 +46,6 @@ function requestSuggestions(query) {
     clearSuggestions();
     return;
   }
-
   const requestSource = state.source;
   const requestGame = state.game;
   const requestQuery = query;
@@ -54,7 +56,6 @@ function requestSuggestions(query) {
       if (isSameSuggestionRequest(requestId, requestQuery, requestSource, requestGame)) {
         showSuggestionLoading();
       }
-
       const items = requestSource === 'db'
         ? await fetchDbSuggestions(requestQuery, requestGame)
         : await fetchWikiSuggestions(requestQuery, requestGame);
@@ -64,12 +65,8 @@ function requestSuggestions(query) {
       }
     } catch (err) {
       if (err && err.name === 'AbortError') return;
-
       if (isSameSuggestionRequest(requestId, requestQuery, requestSource, requestGame)) {
-        // Network/API failures should never erase a useful visible result.
-        if (!suggestions.length) {
-          suggestionBox.classList.remove('show');
-        }
+        if (!suggestions.length) suggestionBox.classList.remove('show');
       }
     }
   }, delay);
@@ -80,7 +77,6 @@ function warmCurrentSource() {
     warmDbAutocomplete(state.game).catch(() => {});
   }
 }
-
 wikiToggle.addEventListener('change', () => {
   state.game = wikiToggle.checked ? 'poe2' : 'poe';
   applyState();
@@ -97,14 +93,12 @@ sourceDb.addEventListener('click', () => {
   applyState();
   warmCurrentSource();
 });
-
 form.addEventListener('submit', e => {
   e.preventDefault();
   const hasSelectedSuggestion = suggestions.length && suggestionBox.classList.contains('show') && activeIndex >= 0;
   const term = hasSelectedSuggestion ? suggestions[activeIndex] : input.value;
   search(term);
 });
-
 input.addEventListener('input', () => requestSuggestions(input.value.trim()));
 input.addEventListener('keydown', e => {
   const hasSuggestions = suggestions.length && suggestionBox.classList.contains('show');
@@ -114,7 +108,6 @@ input.addEventListener('keydown', e => {
   if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIndex - 1); }
   if (e.key === 'Enter' && activeIndex >= 0) { e.preventDefault(); search(suggestions[activeIndex]); }
 });
-
 input.addEventListener('blur', () => {
   setTimeout(() => suggestionBox.classList.remove('show'), 120);
 });
