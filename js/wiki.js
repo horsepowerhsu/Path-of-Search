@@ -1,12 +1,18 @@
 const wikiCache = new Map();
 let wikiAbortController = null;
 
+const WIKI_INDEX_VERSION = 1;
+
 function getWikiBaseUrlForGame(game) {
   return game === 'poe2' ? 'https://www.poe2wiki.net' : 'https://www.poewiki.net';
 }
 
 function getWikiCacheKey(query, game = state.game) {
-  return `pos:wiki:${game}:${query.trim().toLowerCase()}:v7`;
+  return `pos:wiki:${game}:${query.trim().toLowerCase()}:v8`;
+}
+
+function getWikiIndexKey(game = state.game) {
+  return `pos:wiki-index:${game}:v${WIKI_INDEX_VERSION}`;
 }
 
 function uniqueWikiItems(items) {
@@ -109,9 +115,43 @@ async function fetchWikiThroughTab(query, game, signal) {
   return ranked.length ? ranked : items.slice(0, CONFIG.WIKI_LIMIT);
 }
 
+async function searchWikiLocalIndex(query, game) {
+  const cached = await posStorageGet(getWikiIndexKey(game));
+  const titles = Array.isArray(cached?.titles) ? cached.titles : [];
+  if (!titles.length) return { hasIndex: false, items: [] };
+
+  const normalizedQuery = POS_SEARCH.normalize(query);
+  const direct = [];
+  const other = [];
+
+  for (const title of titles) {
+    const normalizedTitle = POS_SEARCH.normalize(title);
+    if (!normalizedTitle) continue;
+    const item = { label: title, value: title };
+
+    if (normalizedTitle.startsWith(normalizedQuery)) direct.push(item);
+    else if (normalizedTitle.includes(normalizedQuery)) other.push(item);
+  }
+
+  // Prefix/substring results feel closest to Wiki autocomplete. If there are
+  // not enough direct matches, let the existing fuzzy ranker fill the rest.
+  let items = uniqueWikiItems([...direct, ...other]);
+  if (items.length < CONFIG.WIKI_LIMIT) {
+    const allItems = titles.map(title => ({ label: title, value: title }));
+    const fuzzy = POS_SEARCH.rank(allItems, query, CONFIG.WIKI_LIMIT * 2);
+    items = uniqueWikiItems([...items, ...fuzzy]);
+  }
+
+  const ranked = POS_SEARCH.rank(items, query, CONFIG.WIKI_LIMIT);
+  return {
+    hasIndex: true,
+    items: ranked.length ? ranked : items.slice(0, CONFIG.WIKI_LIMIT)
+  };
+}
+
 function wikiTabRequiredSuggestion(query, game) {
   return [{
-    label: game === 'poe2' ? '⚠ 先開啟 PoE2 Wiki 分頁' : '⚠ 先開啟 PoE Wiki 分頁',
+    label: game === 'poe2' ? '⚠ 第一次請先開啟 PoE2 Wiki' : '⚠ 第一次請先開啟 PoE Wiki',
     value: query,
     url: `${getWikiBaseUrlForGame(game)}/`
   }];
@@ -127,12 +167,24 @@ async function fetchWikiSuggestions(query, game = state.game) {
   const cached = await posStorageGet(key);
   if (cached && Array.isArray(cached.items) && cached.items.length) {
     wikiCache.set(key, cached.items);
-    if (!posCacheIsFresh(cached, POS_CACHE_TTL.WIKI_RESULT)) {
-      refreshWikiSuggestions(normalizedQuery, game).catch(() => {});
-    }
     return cached.items;
   }
 
+  // New behavior: search the locally synced Wiki title index first. This works
+  // even after the authenticated Wiki tab has been closed.
+  const local = await searchWikiLocalIndex(normalizedQuery, game);
+  if (local.items.length) {
+    wikiCache.set(key, local.items);
+    await posStorageSet(key, { updatedAt: Date.now(), items: local.items });
+    return local.items;
+  }
+
+  // If an index already exists, an empty local result is a legitimate "no
+  // matching title" result. Do not force the user to reopen the Wiki tab.
+  if (local.hasIndex) return [];
+
+  // No local index yet: use the authenticated Wiki tab once. The content
+  // script will also build the full local title index in the background.
   return refreshWikiSuggestions(normalizedQuery, game);
 }
 
